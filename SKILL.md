@@ -10,7 +10,7 @@ agent_created: true
 
 Agnes AI API 调用 Agnes AI 实验室的图像和视频生成模型，覆盖两大模态：
 
-- **图像**：Agnes-Image-2.1-Flash（文生图）、Agnes-Image-2.0-Flash（图生图/多图合成）
+- **图像**：Agnes-Image-2.5-Flash（文生图/图生图/多图合成，全面优于 2.1-flash）、Agnes-Image-2.1-Flash（兼容备用）、Agnes-Image-2.0-Flash（需要 seed 复现时用）
 - **视频**：Agnes-Video-2.5-Flash（新一代快速视频模型）、Agnes-Video-V2.0（经典视频模型）
 
 图像接口兼容 OpenAI `/v1/images/generations` 协议，视频采用异步任务模式（`POST /v1/videos` + `GET /v1/videos/{task_id}`）。
@@ -104,46 +104,76 @@ python agnes_api.py chat --prompt "你好，介绍一下你自己" --stream
 
 | 需求场景 | 推荐模型 | 原因 |
 |----------|----------|------|
-| 从零生成图片（文生图） | `agnes-image-2.1-flash` | 针对高信息密度图像专项优化 |
-| 编辑现有图片（单图图生图） | `agnes-image-2.1-flash` | 支持图生图，**不需要 tags**，更简单 |
-| 多图合成/融合（将多张图合并为一张） | `agnes-image-2.1-flash` | 实测可传多张图做融合，**无需 tags** |
+| 从零生成图片（文生图） | **`agnes-image-2.5-flash`** | 最新一代，高信息密度优化，全面超过 2.1-flash |
+| 编辑现有图片（单图图生图） | **`agnes-image-2.5-flash`** | 支持图生图，**不需要 tags**，保留构图能力更强 |
+| 多图合成/融合（将多张图合并为一张） | **`agnes-image-2.5-flash`** | 实测可传多张图做融合，**无需 tags**，质量更好 |
 | 多图合成且需要固定种子 | `agnes-image-2.0-flash` | 需要 `tags: ["img2img"]`，支持 `seed` |
 | **视频生成（速度优先）** | **`agnes-video-2.5-flash`** | **新一代快速模型，30秒完成，720P/5秒，支持 text/reference/keyframe 三种模式** |
 | **视频生成（质量/参数优先）** | `agnes-video-v2.0` | 支持自定义分辨率、帧数、帧率 + 图生视频 |
 
-> ⚠️ **重要**：`agnes-image-2.1-flash` **支持图生图与多图合成**！只需在 `extra_body.image` 中传入图片 URL 数组，**不需要** `tags: ["img2img"]`。相比 2.0-flash，2.1-flash 更省事。
-> `agnes-image-2.0-flash` 仅在需要 `seed` 复现结果或明确使用 `tags: ["img2img"]` 时使用。
+> ⚠️ **重要**：`agnes-image-2.5-flash` **支持图生图与多图合成**！只需在 `extra_body.image` 中传入图片 URL 数组，**不需要** `tags: ["img2img"]`。相比 2.1-flash，2.5-flash 质量更优。
+> `agnes-image-2.1-flash` 已兼容，可作为降级备用。`agnes-image-2.0-flash` 仅在需要 `seed` 复现结果或明确使用 `tags: ["img2img"]` 时使用。
 
 ### 1. 文生图（Text-to-Image）
 
-使用 `agnes-image-2.1-flash` 模型，通过文本描述直接生成图片。
+使用 `agnes-image-2.5-flash` 模型，通过文本描述直接生成图片。
 
-**接口**：`POST /v1/images/generations`
+**接口**：`POST https://apihub.agnes-ai.com/v1/images/generations`
 
 **参数**：
 
 | 参数 | 必填 | 类型 | 说明 | 示例 |
 |------|------|------|------|------|
-| `model` | 是 | string | 模型名称，固定为 `"agnes-image-2.1-flash"` | — |
+| `model` | 是 | string | 模型名称，固定为 `"agnes-image-2.5-flash"` | — |
 | `prompt` | 是 | string | 图片描述文本，越详细越好 | `"一只可爱的柴犬在樱花树下睡觉"` |
-| `size` | 否 | string | 输出图像尺寸 | `"1024x1024"`, `"1024x768"`, `"768x1024"` |
+| `size` | 否 | string | 输出尺寸档位（推荐：`"1K"`/`"2K"`/`"3K"`/`"4K"`），也兼容 `"1024x768"` 历史精确尺寸 | `"2K"`, `"1024x1024"` |
+| `ratio` | 否 | string | 宽高比，与 `size` 配合使用：`"1:1"`（默认）、`"3:4"`、`"4:3"`、`"16:9"`、`"9:16"`、`"2:3"`、`"3:2"`、`"21:9"` | `"16:9"` |
 | `extra_body.image` | 否 | array | 输入图像 URL 数组（图生图时用） | `["https://..."]` |
 | `extra_body.response_format` | 否 | string | 响应格式，默认返回 URL | `"url"` |
+| `return_base64` | 否 | boolean | 文生图 Base64 输出时设为 `true` | `true` |
 
-> ⚠️ **`agnes-image-2.1-flash` 不支持 `seed` 参数**，设置会导致 422 错误。如需复现结果请使用 `agnes-image-2.0-flash`。
-> 
-> ⚠️ **`response_format` 不能放在顶层**！必须放在 `extra_body` 里（如 `extra_body.response_format: "url"`），否则会报 400 错误。也可省略，默认返回 URL。
+> ⚠️ **`agnes-image-2.5-flash` 不支持 `seed` 参数**，设置会导致 422 错误。如需复现结果请使用 `agnes-image-2.0-flash`。
+>
+> ⚠️ **`response_format` 不能放在顶层**！必须放在 `extra_body` 里，否则会报 400 错误。也可省略，默认返回 URL。
+>
+> ⚠️ **尺寸建议**：`size` 推荐用档位式 `"1K"`/`"2K"`/`"3K"`/`"4K"` + `ratio` 组合，可得到可预期的输出尺寸（如 `"2K"` + `"16:9"` = 2624×1472）。
+
+**尺寸参考表**：
+
+| 档位 | 1:1 | 16:9 | 9:16 | 3:4 |
+|------|-----|------|------|-----|
+| 1K | 1024×1024 | 1312×736 | 736×1312 | 864×1152 |
+| 2K | 2048×2048 | 2624×1472 | 1472×2624 | 1728×2304 |
+| 3K | 3072×3072 | 3936×2208 | 2208×3936 | 2592×3456 |
+| 4K | 4096×4096 | 5248×2944 | 2944×5248 | 3456×4608 |
+
+**文生图 + URL 输出**：
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="你的 Agnes API Key",
+    base_url="https://apihub.agnes-ai.com/v1"
+)
+
+response = client.images.generate(
+    model="agnes-image-2.5-flash",
+    prompt="一只可爱的柴犬在樱花树下睡觉，电影级写实风格，柔和金色光线",
+    size="2K",
+    ratio="16:9"
+)
+print(response.data[0].url)
+```
 
 **文生图 + Base64 输出**（不需要额外参数，用 `return_base64: true`）：
 
 ```python
 response = client.images.generate(
-    model="agnes-image-2.1-flash",
+    model="agnes-image-2.5-flash",
     prompt="一只可爱的柴犬在樱花树下睡觉",
     size="1024x1024",
-    extra_body={
-        "response_format": "b64_json"  # 返回 base64 编码
-    }
+    return_base64=True
 )
 print(response.data[0].b64_json[:50], "...")  # base64 字符串
 ```
@@ -153,7 +183,7 @@ print(response.data[0].b64_json[:50], "...")  # base64 字符串
 > ⚠️ **重要（对照官方文档 2026-07-01）**：`agnes-image-2.1-flash` **也支持图生图**，且**不需要 `tags` 参数**！推荐优先使用 2.1-flash。
 > `agnes-image-2.0-flash` 仅用于**多图合成**（唯一支持）或需要 `seed` 复现结果的场景。
 
-#### 2.1 使用 `agnes-image-2.1-flash` 图生图（推荐）
+#### 2.1 使用 `agnes-image-2.5-flash` 图生图（推荐）
 
 最简单的方式：在 `extra_body.image` 中传入图片 URL 即可，**不需要 `tags`**。
 
@@ -161,9 +191,10 @@ print(response.data[0].b64_json[:50], "...")  # base64 字符串
 
 | 参数 | 位置 | 必填 | 说明 |
 |------|------|------|------|
-| `model` | 顶层 | 是 | `"agnes-image-2.1-flash"` |
+| `model` | 顶层 | 是 | `"agnes-image-2.5-flash"` |
 | `prompt` | 顶层 | 是 | 编辑指令，描述要做的修改 |
-| `size` | 顶层 | 否 | 输出尺寸 |
+| `size` | 顶层 | 否 | 输出尺寸（推荐档位：`"1K"`/`"2K"`） |
+| `ratio` | 顶层 | 否 | 宽高比，默认 `"1:1"` |
 | `extra_body.image` | extra_body | 是 | 输入图片 URL 列表（单张或多张） |
 | `extra_body.response_format` | extra_body | 否 | `"url"`（默认）或 `"b64_json"` |
 
@@ -176,14 +207,15 @@ from openai import OpenAI
 
 client = OpenAI(
     api_key="你的 Agnes API Key",
-    base_url="https://apihub.agnes-ai.cn/v1"
+    base_url="https://apihub.agnes-ai.com/v1"
 )
 
-# 单图编辑（推荐方式，用 agnes-image-2.1-flash）
+# 单图编辑（推荐方式，用 agnes-image-2.5-flash）
 response = client.images.generate(
-    model="agnes-image-2.1-flash",
+    model="agnes-image-2.5-flash",
     prompt="把这张照片改成水彩画风格，保留原始构图",
-    size="1024x768",
+    size="2K",
+    ratio="4:3",
     extra_body={
         "image": ["https://example.com/photo.png"],
         "response_format": "url"
@@ -204,7 +236,7 @@ with open("photo.jpg", "rb") as f:
 
 # 图生图（Base64 输出，图片不需要公网 URL）
 response = client.images.generate(
-    model="agnes-image-2.1-flash",
+    model="agnes-image-2.5-flash",
     prompt="Make the object orange while preserving the original composition",
     size="1024x768",
     extra_body={
@@ -236,21 +268,23 @@ print(response.data[0].url)
 
 ### 3. 多图合成（Multi-Image Composition）
 
-> ⚠️ **多图合成（将多张参考图融合为一张）可用 `agnes-image-2.1-flash`，也可以继续用 `agnes-image-2.0-flash`**。
+> ⚠️ **多图合成（将多张参考图融合为一张）可用 `agnes-image-2.5-flash`**，也可以继续用 `agnes-image-2.0-flash`。
 >
-> 当前实测结果（2026-07-15）：
-> - **`2.1-flash`**：在 `extra_body.image` 中传多张图即可，**不需要 `tags`**，实测已能融合角色+场景。
+> 当前实测结果（2026-09-04）：
+> - **`2.5-flash`**：在 `extra_body.image` 中传多张图即可，**不需要 `tags`**，质量优于 2.1-flash。
+> - **`2.1-flash`**：同样可用，作为兼容备用。
 > - **`2.0-flash`**：需要 `extra_body.tags: ["img2img"]`，支持 `seed`。
 >
-> 官方 2.1 文档只文档化了单图图生图示例，未明确说明多图融合行为，但接口层面已可正常工作。若追求稳定/复现，推荐 2.1-flash 测试通过后再大规模使用，或继续用 2.0-flash + `tags`。
+> 官方 2.5-flash 文档明确支持多图合成（`extra_body.image` 数组），且质量全面超越 2.1-flash。若追求稳定/复现，推荐 2.5-flash；需要 seed 时用 2.0-flash。
 
-使用 `agnes-image-2.1-flash`（多图合成，无需 tags）：
+使用 `agnes-image-2.5-flash`（多图合成，无需 tags）：
 
 ```python
 response = client.images.generate(
-    model="agnes-image-2.1-flash",
+    model="agnes-image-2.5-flash",
     prompt="Keep the character's appearance unchanged and place her naturally into the cherry-blossom scene, anime style",
-    size="1024x1024",
+    size="2K",
+    ratio="3:4",
     extra_body={
         "image": [
             "https://example.com/character.png",  # 第一张参考图（如角色）
@@ -710,18 +744,17 @@ response = client.chat.completions.create(
 用户请求生成/编辑图片
 │
 ├─ 文生图（无输入图片）？
-│   └─ 使用 agnes-image-2.1-flash（文生图）
+│   └─ 使用 agnes-image-2.5-flash（首选），size 推荐档位式 "2K"/"1K" + ratio
 │
 ├─ 图生图（提供了图片）？
-│   ├─ 单图编辑 → 推荐使用 `agnes-image-2.1-flash`（不需要 tags）
-│   ├─ 多图合成 → 推荐 `agnes-image-2.1-flash`（无需 tags，实测已可融合）；需要 `seed` 时用 `agnes-image-2.0-flash`（需要 `tags: ["img2img"]`）
+│   ├─ 单图编辑 → 推荐使用 `agnes-image-2.5-flash`（不需要 tags，构图保留更强）
+│   ├─ 多图合成 → 推荐 `agnes-image-2.5-flash`（无需 tags，质量最优）；需要 `seed` 时用 `agnes-image-2.0-flash`（需要 `tags: ["img2img"]`）
 │
 ├─ 用户需要生成视频？
 │   ├─ 纯文本描述 → 文生视频（无 image 参数）
-│   ├─ 单张图片动画化 → 图生视频（image 参数传单 URL）
-│   ├─ 多张图片引导 → 多图视频（extra_body.image）
-│   └─ 关键帧过渡 → 关键帧动画（extra_body.mode: "keyframes"）
-│   └─ 结果 → 异步任务：先创建（POST /v1/videos），再轮询（GET /agnesapi?video_id=）
+│   ├─ 单张图片动画化 → 图生视频（first_frame/last_frame 或 images 参数）
+│   ├─ 多张图片引导 → 多图视频（images 数组）
+│   └─ 结果 → 异步任务：先创建（POST /v1/videos），再轮询
 │
 └─ 用户需要纯文本对话？
     ├─ 通用对话 → 使用 agnes-2.0-flash
@@ -753,14 +786,15 @@ with open("photo.jpg", "rb") as f:
 ### 图像
 
 - **Prompt 优化**：文生图时 prompt 应详细描述场景、风格、光线、构图等元素。推荐结构：`[主体] + [场景/环境] + [风格] + [光照] + [构图] + [质量要求]`
-- **图生图优先用 2.1-flash**：不需要 `tags`，`response_format` 放 `extra_body` 里，质量更好
-- **多图合成只能用 2.0-flash**：需要 `extra_body.tags: ["img2img"]`，不支持 `response_format`
-- **尺寸选择**：常用 `"1024x1024"`（正方形）、`"1024x768"`（横屏）、`"768x1024"`（竖屏/视觉小说推荐）
+- **图生图优先用 2.5-flash**：不需要 `tags`，`response_format` 放 `extra_body` 里，构图保留能力更强
+- **多图合成优先用 2.5-flash**：同样无需 tags，质量优于 2.1-flash；需要 `seed` 复现时用 2.0-flash
+- **尺寸选择**：推荐档位式 `size + ratio` 组合——`"2K"` + `"16:9"` = 2624×1472，`"2K"` + `"3:4"` = 1728×2304。也可用历史精确尺寸如 `"1024x1024"`
 - **多图合成风格控制**：在 prompt 中明确指定目标风格，如"日系动漫风格"、"水彩画风格"，否则默认输出写实摄影风
-- **角色一致性**：`agnes-image-2.1-flash` 不支持 `seed`，每次生成角色会有差异。如需一致性：
+- **角色一致性**：`agnes-image-2.5-flash` 不支持 `seed`，每次生成角色会有差异。如需一致性：
   1. 用 `agnes-image-2.0-flash` + 固定 `seed` 生成角色
   2. 或用传统图像叠加（PIL/OpenCV）将角色立绘放到背景上
 - **本地图片处理**：无法公网访问的图片用 Data URI Base64 传入 `extra_body.image`
+- **定价**：当前所有输出分辨率档位和输入参考图片均**免费**
 
 ### 视频
 
@@ -815,24 +849,27 @@ with open("photo.jpg", "rb") as f:
 
 1. **API Key 有效** — `sk-` 开头，在 platform.agnes-ai.com 创建
 2. **Base URL 正确** — `https://apihub.agnes-ai.cn/v1`（不要漏 `/v1`）
-3. **模型名称正确** — 2.1-flash（文生图/图生图/多图合成）、2.0-flash（多图合成 + 支持 `seed`）、video-v2.0、agnes-2.0-flash（对话）
+3. **模型名称正确** — 2.5-flash（文生图/图生图/多图合成，推荐）、2.1-flash（兼容备用）、2.0-flash（多图合成 + 支持 `seed`）、video-v2.0、agnes-2.0-flash（对话）
 4. **图生图参数正确**：
-   - 2.1-flash：`extra_body.image` 传 URL 数组，不需要 `tags` ✅
+   - 2.5-flash：`extra_body.image` 传 URL 数组，不需要 `tags` ✅
    - 2.0-flash 多图合成：`extra_body.tags = ["img2img"]` ✅
-   - `response_format`：2.1 支持（放 `extra_body`），2.0 **不支持** ⚠️
-5. **视频查询正确** — 保存 `video_id`，用 `/agnesapi?video_id=` 轮询，视频 URL 在 `url` 字段
+   - `response_format`：2.5/2.1 支持（放 `extra_body`），2.0 **不支持** ⚠️
+5. **尺寸参数**：2.5-flash 推荐 `size="2K"` + `ratio="16:9"` 等档位组合
+6. **视频查询正确** — 保存 `video_id`，用 `GET https://apihub.agnes-ai.com/agnesapi?video_id=<VIDEO_ID>&model_name=agnes-video-2.5-flash`
 
 ### 参数支持矩阵（图像模型）
 
-| 参数 | `2.1-flash` | `2.0-flash` | 说明 |
-|------|------------|------------|------|
-| `prompt` | ✅ 必填 | ✅ 必填 | — |
-| `size` | ✅ 可选 | ✅ 可选 | — |
-| `seed` | ❌ 不支持 | ✅ 可选 | 2.0 可复现结果 |
-| `extra_body.image` | ✅ 可选 | ✅ 必填 | 输入图 URL 数组，支持单张/多张 |
-| `extra_body.response_format` | ✅ 可选 | ❌ 不支持 | 2.1 放 `extra_body`，2.0 不支持 |
-| `extra_body.tags` | ❌ 不需要 | ✅ 必填 | 多图合成设 `["img2img"]`（2.1 不需要） |
-| `n` / `quality` / `style` | ❌ | ❌ | 均不支持 |
+| 参数 | `2.5-flash` | `2.1-flash` | `2.0-flash` | 说明 |
+|------|------------|------------|------------|------|
+| `prompt` | ✅ 必填 | ✅ 必填 | ✅ 必填 | — |
+| `size` | ✅ 可选（推荐档位） | ✅ 可选 | ✅ 可选 | 2.5 推荐 `"1K"`/`"2K"`/`"3K"`/`"4K"` |
+| `ratio` | ✅ 可选 | ❌ | ❌ | 2.5 新增，如 `"16:9"`、`"9:16"` |
+| `seed` | ❌ 不支持 | ❌ 不支持 | ✅ 可选 | 仅 2.0 可复现结果 |
+| `extra_body.image` | ✅ 可选 | ✅ 可选 | ✅ 必填 | 输入图 URL 数组，支持单张/多张 |
+| `extra_body.response_format` | ✅ 可选 | ✅ 可选 | ❌ 不支持 | 2.5/2.1 放 `extra_body`，2.0 不支持 |
+| `extra_body.tags` | ❌ 不需要 | ❌ 不需要 | ✅ 必填 | 多图合成设 `["img2img"]`（2.5/2.1 不需要） |
+| `return_base64` | ✅ 可选 | ❌ | ❌ | 2.5 原生支持 |
+| `n` / `quality` / `style` | ❌ | ❌ | ❌ | 均不支持 |
 
 ## Resources
 

@@ -3,9 +3,10 @@
 Agnes API 生成脚本
 支持：
   1. 文本对话（Chat） — agnes-2.0-flash（支持流式、Thinking、工具调用）
-  2. 文生图（Text-to-Image） — agnes-image-2.1-flash
-  3. 图生图/编辑（Image-to-Image） — agnes-image-2.0-flash
-  4. 文生视频/图生视频/关键帧动画（异步任务） — agnes-video-v2.0 / agnes-video-2.5-flash
+  2. 文生图（Text-to-Image） — agnes-image-2.5-flash（首选）、agnes-image-2.1-flash（兼容）
+  3. 图生图/编辑（Image-to-Image） — agnes-image-2.5-flash（推荐，无需 tags）
+  4. 多图合成（Multi-Image Composition） — agnes-image-2.5-flash（首选）或 agnes-image-2.0-flash（需 seed）
+  5. 文生视频/图生视频/关键帧动画（异步任务） — agnes-video-v2.0 / agnes-video-2.5-flash
 
 用法:
   # 首次使用：引导式配置 API Key（只需运行一次）
@@ -15,20 +16,26 @@ Agnes API 生成脚本
   python agnes_api.py chat --prompt "你好，请介绍一下自己" --stream
   python agnes_api.py chat --prompt "用Python写一个贪吃蛇游戏" --system "你是一位资深Python工程师" --thinking
 
-  # 文生图
-  python agnes_api.py image --prompt "一只柴犬在樱花树下" --size 1024x1024
+  # 文生图（默认用 2.5-flash）
+  python agnes_api.py image --prompt "一只柴犬在樱花树下" --size 2K --ratio 16:9
 
   # 图生图（编辑图片）
-  python agnes_api.py image --prompt "改成水彩画风格" --size 1024x768 --image "https://example.com/photo.jpg"
+  python agnes_api.py image --prompt "改成水彩画风格" --size 2K --ratio 4:3 --image "https://example.com/photo.jpg"
+
+  # 多图合成
+  python agnes_api.py image --prompt "融合两张图" --size 2K --image "https://ex.com/a.jpg" --image "https://ex.com/b.jpg"
+
+  # 旧模型兼容
+  python agnes_api.py image --prompt "测试" --model agnes-image-2.1-flash --size 1024x1024
 
   # 文生视频
   python agnes_api.py video --prompt "A cinematic shot of a cat walking on the beach" --frames 121 --fps 24
 
-  # 图生视频
-  python agnes_api.py video --prompt "The woman turns around" --image "https://example.com/photo.jpg" --frames 121 --fps 24
+  # 图生视频（2.5-flash）
+  python agnes_api.py video --prompt "A cat walking on beach" --model agnes-video-2.5-flash --mode text
 
-  # 多图视频 / 关键帧动画
-  python agnes_api.py video --prompt "Transition between images" --image "https://ex.com/a.jpg" --image "https://ex.com/b.jpg" --mode keyframes --frames 121 --fps 24
+  # 关键帧视频（2.5-flash）
+  python agnes_api.py video --prompt "Transition" --model agnes-video-2.5-flash --mode keyframe --image first.jpg --image second.jpg
 
 API Key 配置（三种方式，优先级从高到低）:
   1. 命令行参数: --api-key sk-xxx
@@ -207,37 +214,56 @@ def cmd_image(args):
     api_key = get_api_key()
     client = OpenAI(api_key=api_key, base_url=API_BASE)
 
-    # 模型选择逻辑（对照官方文档 2026-07-01）：
-    # - 文生图：agnes-image-2.1-flash
-    # - 图生图（单图）：agnes-image-2.1-flash（推荐，不需要 tags）
-    # - 多图合成：agnes-image-2.0-flash（唯一支持）
+    # 模型选择逻辑（对照官方文档 2026-09-04）：
+    # - 文生图/图生图/多图合成：默认 agnes-image-2.5-flash（首选）
     # - 需要 seed 复现：agnes-image-2.0-flash
+    # - 指定旧模型时按用户选择
+    model = args.model or "agnes-image-2.5-flash"
     is_img2img = args.images is not None and len(args.images) > 0
     multi_image = is_img2img and len(args.images) > 1
-    model = "agnes-image-2.0-flash" if multi_image else "agnes-image-2.1-flash"
 
-    kwargs = {"model": model, "prompt": args.prompt, "size": args.size}
+    # 多图合成且需要 seed → 强制 2.0-flash
+    if multi_image and args.seed is not None:
+        model = "agnes-image-2.0-flash"
+
+    kwargs = {"model": model, "prompt": args.prompt}
+
+    # size 和 ratio 参数
+    if args.size:
+        kwargs["size"] = args.size
+    if args.ratio:
+        kwargs["ratio"] = args.ratio
 
     if is_img2img:
         extra = {"image": resolve_images(args.images)}
-        if multi_image:
-            # 多图合成必须用 2.0-flash + tags
+        # 2.0-flash 多图合成必须加 tags
+        if model == "agnes-image-2.0-flash":
             extra["tags"] = ["img2img"]
-        # 2.1-flash 支持 response_format（放 extra_body 里）
-        # 2.0-flash 不支持 response_format，不加此参数
-        if not multi_image and args.output_format == "b64_json":
+        else:
+            # 2.5-flash / 2.1-flash：不需要 tags
+            pass
+        # response_format 只对支持的模式添加
+        if model != "agnes-image-2.0-flash" and args.output_format == "b64_json":
             extra["response_format"] = "b64_json"
         kwargs["extra_body"] = extra
     else:
-        # 纯文生图可用 return_base64
+        # 纯文生图可用 return_base64（2.5-flash 支持）
         if args.output_format == "b64_json":
             kwargs["return_base64"] = True
 
+    if args.seed is not None:
+        kwargs["seed"] = args.seed
+
     print(f"使用模型: {model}")
     print(f"Prompt: {args.prompt}")
-    print(f"尺寸: {args.size}")
+    size_info = f"{args.size}" if args.size else "default"
+    if args.ratio:
+        size_info += f" + ratio={args.ratio}"
+    print(f"尺寸: {size_info}")
     if multi_image:
-        print("⚠️ 多图合成模式（agnes-image-2.0-flash + tags: img2img）")
+        print(f"多图合成（{len(args.images)} 张）")
+        if model == "agnes-image-2.0-flash":
+            print("⚠️ 使用 2.0-flash（支持 seed 复现）")
 
     try:
         response = client.images.generate(**kwargs)
@@ -285,6 +311,8 @@ def cmd_video(args):
         }
         if args.aspect_ratio:
             body["aspect_ratio"] = args.aspect_ratio
+        if args.seconds:
+            body["seconds"] = str(args.seconds)
         if args.negative:
             body["negative_prompt"] = args.negative
         if args.seed is not None:
@@ -493,13 +521,19 @@ def main():
     # image 子命令
     img_p = sub.add_parser("image", help="图像生成（文生图/图生图/多图合成）")
     img_p.add_argument("--prompt", type=str, required=True, help="图片描述或编辑指令")
-    img_p.add_argument("--size", type=str, default="1024x1024", help="输出尺寸")
+    img_p.add_argument("--model", type=str, default=None,
+                       choices=["agnes-image-2.5-flash", "agnes-image-2.1-flash", "agnes-image-2.0-flash"],
+                       help="图像模型（默认 agnes-image-2.5-flash）")
+    img_p.add_argument("--size", type=str, default=None,
+                       help="输出尺寸。推荐档位：1K/2K/3K/4K，或精确如 1024x1024")
+    img_p.add_argument("--ratio", type=str, default=None,
+                       help="宽高比（仅 2.5-flash 有效）：1:1/3:4/4:3/16:9/9:16/2:3/3:2/21:9")
     img_p.add_argument("--image", type=str, action="append", dest="images",
-                       help="输入图片（URL 或本地路径，多张图片触发多图合成）")
+                       help="输入图片（URL 或本地路径，多张触发多图合成）")
     img_p.add_argument("--output-format", type=str,
                        choices=["url", "b64_json"], default="url",
                        help="输出格式：url（默认，下载到本地）或 b64_json（base64编码）")
-    img_p.add_argument("--save", type=str, help="保存路径（url模式下载图片，b64_json模式保存文本）")
+    img_p.add_argument("--seed", type=int, default=None, help="随机种子（仅 2.0-flash 支持）")
     img_p.set_defaults(func=cmd_image)
 
     # video 子命令
@@ -507,10 +541,14 @@ def main():
     vid_p.add_argument("--prompt", type=str, required=True, help="视频内容描述")
     vid_p.add_argument("--image", type=str, action="append", dest="images",
                        help="输入图片 URL 或本地路径")
-    vid_p.add_argument("--mode", type=str, choices=["text", "ti2vid", "keyframes"],
-                       default="text", help="生成模式（2.5-flash 仅支持 text）")
+    vid_p.add_argument("--mode", type=str, choices=["text", "keyframe", "reference", "keyframes"],
+                       default="text", help="生成模式（2.5-flash 支持 text/keyframe/reference）")
     vid_p.add_argument("--model", type=str, choices=["agnes-video-v2.0", "agnes-video-2.5-flash"],
                        default="agnes-video-v2.0", help="视频模型")
+    vid_p.add_argument("--aspect-ratio", type=str, default=None,
+                       help="视频宽高比（仅 2.5-flash 有效）：16:9/4:3/9:16/1:1")
+    vid_p.add_argument("--seconds", type=int, default=5,
+                       help="视频时长（仅 2.5-flash 有效，4-12秒）")
     vid_p.add_argument("--width", type=int, default=1152, help="视频宽度（仅 v2.0 有效）")
     vid_p.add_argument("--height", type=int, default=768, help="视频高度（仅 v2.0 有效）")
     vid_p.add_argument("--frames", type=int, default=121,

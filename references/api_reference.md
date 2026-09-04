@@ -14,30 +14,46 @@
 
 | 模型名称 | 模态 | 用途 | 重要说明 |
 |----------|------|------|----------|
-| `agnes-image-2.1-flash` | 图像 | 文生图 + 图生图 | **推荐**用于文生图和单图编辑，不需要 `tags` |
-| `agnes-image-2.0-flash` | 图像 | 多图合成 + 需 seed 复现 | 仅用于多图合成（唯一支持）或需要 `seed` 的场景 |
+| **`agnes-image-2.5-flash`** | 图像 | **文生图 + 图生图 + 多图合成** | **最新一代，全面优于 2.1-flash，支持档位 size + ratio，免费** |
+| `agnes-image-2.1-flash` | 图像 | 文生图 + 图生图（兼容备用） | 历史版本，可用但质量不如 2.5-flash |
+| `agnes-image-2.0-flash` | 图像 | 多图合成 + 需 seed 复现 | 仅用于需要 `seed` 的场景 |
 | `agnes-2.0-flash` | 文本 | 对话/文本生成 | 支持 Thinking 模式 |
-| `agnes-video-v2.0` | 视频 | 文生视频/图生视频/多图视频/关键帧动画 | 异步任务 API，支持完整参数（width/height/num_frames/frame_rate） |
-| `agnes-video-2.5-flash` | 视频 | 新一代快速视频模型 | 需要 `mode` 参数（`"text"`/`"image"`），不支持 width/height/frame_rate |
+| `agnes-video-v2.0` | 视频 | 文生视频/图生视频/多图视频/关键帧动画 | 异步任务 API，支持完整参数 |
+| `agnes-video-2.5-flash` | 视频 | 新一代快速视频模型 | 需要 `mode` 参数，30秒完成，720P |
 
 ## 图像 API 端点
 
 ### POST /v1/images/generations
 
-#### agnes-image-2.1-flash 参数
+#### agnes-image-2.5-flash 参数
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `model` | string | 是 | `"agnes-image-2.1-flash"` |
+| `model` | string | 是 | `"agnes-image-2.5-flash"` |
 | `prompt` | string | 是 | 图像生成或编辑指令 |
-| `size` | string | 否 | 输出尺寸，如 `"1024x768"` |
+| `size` | string | 否 | 输出尺寸档位（推荐：`"1K"`/`"2K"`/`"3K"`/`"4K"`），也兼容 `"1024x768"` 历史精确尺寸 |
+| `ratio` | string | 否 | 宽高比，与 size 配合：`"1:1"`（默认）、`"3:4"`、`"4:3"`、`"16:9"`、`"9:16"`、`"2:3"`、`"3:2"`、`"21:9"` |
 | `return_base64` | boolean | 否 | 文生图返回 Base64 时用 `true` |
-| `extra_body.image` | array | 图生图必填 | 输入图像 URL 或 Data URI 数组 |
+| `extra_body.image` | array | 图生图必填 | 输入图像 URL 或 Data URI 数组，单张/多张均可 |
 | `extra_body.response_format` | string | 否 | `"url"`（默认）或 `"b64_json"`，**必须放 `extra_body` 里** |
-| `extra_body.tags` | — | 不需要 | 2.1-flash 图生图不需要 `tags` |
+| `extra_body.tags` | — | 不需要 | 2.5-flash 图生图不需要 `tags` |
 
-> ⚠️ **2.1-flash 图生图不需要 `tags: ["img2img"]`**！只需在 `extra_body.image` 中提供输入图像。
+> ⚠️ **2.5-flash 图生图不需要 `tags: ["img2img"]`**！只需在 `extra_body.image` 中提供输入图像。
 > ⚠️ **`response_format` 必须放 `extra_body` 里**！放顶层会导致 400 错误。
+> ⚠️ **`agnes-image-2.5-flash` 不支持 `seed` 参数**，设置会导致 422 错误。
+
+**尺寸参考表（size + ratio 组合输出尺寸）**：
+
+| 档位 | 1:1 | 16:9 | 9:16 | 3:4 |
+|------|-----|------|------|-----|
+| 1K | 1024×1024 | 1312×736 | 736×1312 | 864×1152 |
+| 2K | 2048×2048 | 2624×1472 | 1472×2624 | 1728×2304 |
+| 3K | 3072×3072 | 3936×2208 | 2208×3936 | 2592×3456 |
+| 4K | 4096×4096 | 5248×2944 | 2944×5248 | 3456×4608 |
+
+#### agnes-image-2.1-flash 参数（兼容备用）
+
+与 2.5-flash 相同参数，但 `ratio` 不可用，仅支持精确尺寸如 `"1024x768"`。
 
 #### agnes-image-2.0-flash 参数（仅多图合成时用）
 
