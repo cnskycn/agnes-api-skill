@@ -228,14 +228,15 @@ def cmd_image(args):
 
     kwargs = {"model": model, "prompt": args.prompt}
 
-    # size 和 ratio 参数
+    # size 参数（直接传递）
     if args.size:
         kwargs["size"] = args.size
-    if args.ratio:
-        kwargs["ratio"] = args.ratio
 
     if is_img2img:
         extra = {"image": resolve_images(args.images)}
+        # ratio 必须放在 extra_body 里（OpenAI 客户端不支持顶层 ratio）
+        if args.ratio:
+            extra["ratio"] = args.ratio
         # 2.0-flash 多图合成必须加 tags
         if model == "agnes-image-2.0-flash":
             extra["tags"] = ["img2img"]
@@ -250,6 +251,9 @@ def cmd_image(args):
         # 纯文生图可用 return_base64（2.5-flash 支持）
         if args.output_format == "b64_json":
             kwargs["return_base64"] = True
+        # ratio 必须放在 extra_body 里
+        if args.ratio:
+            kwargs["extra_body"] = {"ratio": args.ratio}
 
     if args.seed is not None:
         kwargs["seed"] = args.seed
